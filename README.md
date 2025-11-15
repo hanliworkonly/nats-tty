@@ -25,13 +25,60 @@
 
 ```
 nats-tty/
-├── index.html      # 主页面
-├── styles.css      # 样式文件
-├── app.js          # 应用逻辑
-└── README.md       # 文档
+├── public/              # Cloudflare Pages 部署目录
+│   ├── index.html      # 主页面
+│   ├── styles.css      # 样式文件
+│   ├── app.js          # 应用逻辑
+│   └── _headers        # Cloudflare 自定义头
+├── index.html          # 主页面（开发）
+├── styles.css          # 样式文件（开发）
+├── app.js              # 应用逻辑（开发）
+├── serial-bridge.js    # 后端串口桥接服务
+├── deploy.sh           # Cloudflare Pages 部署脚本
+├── wrangler.toml       # Cloudflare 配置文件
+├── package.json        # Node.js 项目配置
+└── README.md           # 文档
 ```
 
 ## 快速开始
+
+### 方式一：部署到 Cloudflare Pages（推荐）
+
+1. **安装 Wrangler CLI**
+
+```bash
+npm install -g wrangler
+```
+
+2. **登录 Cloudflare 账户**
+
+```bash
+wrangler login
+```
+
+3. **部署应用**
+
+```bash
+# 使用部署脚本
+./deploy.sh
+
+# 或手动部署
+wrangler pages deploy public --project-name=nats-tty
+```
+
+4. **访问应用**
+
+部署成功后，访问：`https://nats-tty.pages.dev`
+
+或通过 Cloudflare Dashboard 绑定自定义域名。
+
+5. **配置环境**
+
+- 确保你的 NATS 服务器可以从公网访问（使用公网 IP 或域名）
+- 在远程服务器上运行 `serial-bridge.js` 服务
+- 在网页中输入 NATS 服务器的公网地址（如 `wss://your-nats-server.com:4222`）
+
+### 方式二：本地运行
 
 ### 1. 启动 NATS 服务器
 
@@ -243,6 +290,119 @@ main().catch(console.error);
 - 确保使用 HTTP 服务器提供文件，而不是直接打开文件
 - 配置 NATS 服务器允许跨域请求
 
+## Cloudflare Pages 部署详细说明
+
+### GitHub 集成（自动部署）
+
+1. **在 Cloudflare Dashboard 中创建 Pages 项目**
+   - 访问 [Cloudflare Pages](https://pages.cloudflare.com/)
+   - 点击 "Create a project"
+   - 连接你的 GitHub 仓库
+   - 选择 `nats-tty` 仓库
+
+2. **配置构建设置**
+   - Build command: `mkdir -p public && cp index.html styles.css app.js _headers public/`
+   - Build output directory: `public`
+   - Root directory: `/`
+
+3. **部署**
+   - 每次推送到主分支时，Cloudflare Pages 会自动构建和部署
+
+### 手动部署（Wrangler CLI）
+
+```bash
+# 安装依赖
+npm install -g wrangler
+
+# 登录
+wrangler login
+
+# 部署
+./deploy.sh
+```
+
+### 自定义域名
+
+1. 在 Cloudflare Pages 项目设置中
+2. 转到 "Custom domains"
+3. 添加你的域名
+4. Cloudflare 会自动配置 DNS 和 SSL
+
+### 环境变量（可选）
+
+如果需要配置默认的 NATS 服务器地址，可以在 Cloudflare Pages 设置中添加环境变量，然后修改 `app.js` 读取这些变量。
+
+## 生产环境部署架构
+
+```
+┌──────────────┐         ┌──────────────────┐         ┌─────────────┐
+│   浏览器     │ HTTPS   │ Cloudflare Pages │         │ NATS Server │
+│ (用户端)     │────────▶│   (静态托管)      │         │   (公网)    │
+└──────────────┘         └──────────────────┘         └─────────────┘
+                                                              │
+                                                              │ NATS
+                                                              │
+                                                       ┌──────▼──────┐
+                                                       │ Serial      │
+                                                       │ Bridge      │
+                                                       │ Service     │
+                                                       └──────┬──────┘
+                                                              │
+                                                       ┌──────▼──────┐
+                                                       │ 串口设备    │
+                                                       │ (本地/远程) │
+                                                       └─────────────┘
+```
+
+### 生产环境建议
+
+1. **NATS 服务器**
+   - 使用 TLS/SSL 加密（wss://）
+   - 启用用户认证
+   - 配置防火墙规则
+   - 考虑使用 NATS 集群提高可用性
+
+2. **串口桥接服务**
+   - 使用 PM2 或 systemd 管理进程
+   - 配置日志轮转
+   - 实现错误处理和自动重连
+   - 添加健康检查端点
+
+3. **安全性**
+   - 使用强密码或 Token 认证
+   - 限制允许的串口设备列表
+   - 实现访问日志和审计
+   - 定期更新依赖包
+
+4. **示例 systemd 服务配置**
+
+创建 `/etc/systemd/system/serial-bridge.service`:
+
+```ini
+[Unit]
+Description=NATS Serial Bridge Service
+After=network.target
+
+[Service]
+Type=simple
+User=serialuser
+WorkingDirectory=/opt/nats-tty
+Environment="NATS_SERVER=localhost:4222"
+ExecStart=/usr/bin/node serial-bridge.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动服务：
+```bash
+sudo systemctl enable serial-bridge
+sudo systemctl start serial-bridge
+sudo systemctl status serial-bridge
+```
+
 ## 开发计划
 
 - [ ] 支持多个串口同时连接
@@ -250,6 +410,7 @@ main().catch(console.error);
 - [ ] 自定义命令快捷键
 - [ ] 串口数据解析和可视化
 - [ ] 支持更多串口参数配置
+- [x] Cloudflare Pages 部署支持
 
 ## 许可证
 
