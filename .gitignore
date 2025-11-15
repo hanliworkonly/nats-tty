@@ -23,3 +23,10 @@ Thumbs.db
 # Build outputs
 dist/
 build/
+
+# Wrangler
+.wrangler/
+wrangler.toml.backup
+
+# Local development
+.dev.vars
