@@ -1,0 +1,18 @@
+# Cloudflare Pages 自定义 Headers
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+
+# 允许 WebSocket 和 CORS（如果需要）
+/
+  Access-Control-Allow-Origin: *
+
+# 缓存静态资源
+/*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
